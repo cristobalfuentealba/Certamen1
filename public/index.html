@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>ToDo</title>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@unocss/reset/tailwind.min.css">
+	<link rel="stylesheet" href="/css/uno.css">
+	<script src="https://unpkg.com/vue@3.4.21/dist/vue.global.js"></script>
+	<style>
+		[v-cloak] {
+			display: none;
+		}
+
+		.v-enter-from,
+		.v-leave-to {
+			opacity: 0;
+		}
+
+		.v-enter-active,
+		.v-leave-active {
+			transition: opacity 0.5s ease-in-out;
+		}
+	</style>
+</head>
+<body>
+	<div id="app" class="py-6" un-cloak v-cloak>
+		<transition mode="out-in">
+			<div v-if="!user" class="w-full max-w-300px mx-auto">
+				<form @submit.prevent="login" class="grid grid-flow-row mx-auto p-3 border rounded shadow-md">
+					<label class="mb-3">
+						Usuario: 
+						<input v-model="username" class="block border border-gray w-full">
+					</label>
+					<label class="mb-3">
+						Contraseña:
+						<input v-model="password" type="password" class="block border border-gray w-full">
+					</label>
+					<button type="submit" class="bg-blue text-white rounded">Ingresar</button>
+				</form>
+			</div>
+			<div v-else class="max-w-500px w-full p-3 bg-blue-200 rounded shadow-md mx-auto grid grid-flow-row">
+
+				<h2 class="mb-3">Hola {{ user.name }} ({{ user.username }})</h2>
+
+				<input v-model="title" class="mb-3 px-3 py-2 rounded border border-gray-200 w-full" @keyup.enter="addTodo" placeholder="Escribe la tarea a realizar...">
+
+				<ul>
+					<li v-for="todo of todos" :key="todo.id" class="grid grid-cols-[20px_1fr_20px] gap-3 mb-3">
+						<input 
+							type="checkbox" 
+							:checked="todo.completed" 
+							@change="toggleCompleted(todo, $event)"
+						> 
+						<input 
+							:value="todo.title" 
+							@keyup.enter="changeTitle(todo, $event)" 
+							@blur="changeTitle(todo, $event)"
+							class="rounded px-2 py-1"
+						>
+
+						<button type="button" @click="deleteTodo(todo)">X</button>
+					</li>
+				</ul>
+			</div>
+		</transition>
+	</div>
+	<script>
+		const { createApp, ref } = Vue
+
+		createApp({
+			setup() {
+				const username = ref('')
+				const password = ref('')
+				const title = ref('')
+				const todos = ref([])
+				const page = ref(0)
+				const user = ref(null)
+
+				function myfetch(route, method, body) {
+					const options = {
+						method,
+						headers: {
+							'Content-Type': 'application/json'
+						}
+					}
+
+					if (body) {
+						options.body = JSON.stringify(body)
+					}
+
+					if (user.value) {
+						options.headers['X-Authorization'] = user.value.token
+					}
+					
+					return fetch(route, options).then(async response => {
+						if (response.ok) {
+							return response.status === 204 ? null : response.json()
+						}
+
+						const json = await response.json()
+
+						if (json.error) {
+							throw new Error(json.error)
+						}
+
+						throw new Error('Error desconocido')
+					})
+				}
+
+				function get(route, body) {
+					return myfetch(route, 'GET', undefined)
+				}
+
+				function post(route, body) {
+					return myfetch(route, 'POST', body)
+				}
+
+				function put(route, body) {
+					return myfetch(route, 'PUT', body)
+				}
+
+				function remove(route, body) {
+					return myfetch(route, 'DELETE', body)
+				}
+
+				async function login() {
+					user.value = await post('/api/login', { username: username.value, password: password.value })
+					todos.value = await get(`/api/todos`)
+				}
+
+				async function addTodo() {
+					const todo = await post('/api/todos', { title: title.value })
+					title.value = ''
+					todos.value.push(todo)
+				}
+				
+				async function toggleCompleted(todo, event) {
+					const id = todo.id
+					const completed = event.target.checked
+					const newTodo = await put('/api/todos/' + id, {
+						completed
+					})
+
+					const index = todos.value.findIndex(todo => todo.id === id)
+
+					if (index !== -1) {
+						todos.value[index] = newTodo
+					}
+				}
+
+				async function changeTitle(todo, event) {
+					const id = todo.id
+					const title = event.target.value
+					const newTodo = await put('/api/todos/' + id, {
+						title
+					})
+
+					const index = todos.value.findIndex(todo => todo.id === id)
+
+					if (index !== -1) {
+						todos.value[index] = newTodo
+					}
+				}
+
+				async function deleteTodo(todo) {
+					await remove('/api/todos/' + todo.id)
+
+					const index = todos.value.findIndex(t => t.id === todo.id)
+
+					if (index !== -1) {
+						todos.value.splice(index, 1)
+					}
+				}
+
+				return {
+					username,
+					password,
+					title,
+					user,
+					todos,
+					login,
+					addTodo,
+					toggleCompleted,
+					changeTitle,
+					deleteTodo
+				}
+			}
+		}).mount('#app')
+	</script>
+</body>
+</html>
